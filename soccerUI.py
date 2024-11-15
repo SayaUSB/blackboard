@@ -1,6 +1,7 @@
 import tkinter as tk
 from blackboard import Blackboard
 import random
+import math
 
 class SoccerGameUI:
     def __init__(self, master, blackboard):
@@ -153,7 +154,7 @@ class SoccerGameUI:
 
         # Update ball position based on the velocity
         self.blackboard.kick.update_ball_position()
-        
+
         # Check if the ball is in the goal
         self.blackboard.gamestate.is_ball_in_goal(self.blackboard.gamestate.ball_position, self.blackboard)
         self.update_players()
@@ -161,10 +162,27 @@ class SoccerGameUI:
 
         # Update ball position in the canvas and update AI decisions based on the new position
         ball_x, ball_y = self.blackboard.gamestate.ball_position
-        canvas_x, canvas_y = ball_x * 7 + 50, ball_y * 7 + 50  # Scale and offset
+        canvas_x, canvas_y = ball_x * self.scale_factor + self.x_offset, ball_y * self.scale_factor + self.y_offset
         self.canvas.coords(self.ball, canvas_x-5, canvas_y-5, canvas_x+5, canvas_y+5)
-        
+
         # Find the closest player from both teams
+        closest_player, min_distance, kicking_team = self.find_closest_player(ball_x, ball_y)
+
+        if closest_player and kicking_team == 'a':  # If the closest player is from team A
+            better_positioned_player = self.find_better_positioned_teammate(closest_player, ball_x, ball_y)
+            if better_positioned_player:
+                self.pass_ball(closest_player, better_positioned_player)
+            else:
+                self.blackboard.kick.auto_kick()
+        else:
+            self.blackboard.kick.auto_kick()
+
+        # Update score display
+        self.update_score_display()
+
+        self.master.after(100, self.game_loop)
+
+    def find_closest_player(self, ball_x, ball_y):
         closest_player, min_distance, kicking_team = None, float('inf'), None
         for team_id, team in [('a', self.blackboard.team.players), ('b', self.blackboard.team.enemies)]:
             for player, pos in team.items():
@@ -173,18 +191,43 @@ class SoccerGameUI:
                     min_distance = distance
                     closest_player = player
                     kicking_team = team_id
-        
-        self.blackboard.kick.auto_kick()
+        return closest_player, min_distance, kicking_team
 
-        # Update score display
-        score_a = self.blackboard.gamestate.get_score('a')
-        score_b = self.blackboard.gamestate.get_score('b')
-        self.master.title(f"Robotic Soccer Game - Score: A {score_a} - B {score_b}")
-        print(self.canvas.coords(self.ball)[:2])
+    def find_better_positioned_teammate(self, current_player, ball_x, ball_y):
+        field_length = self.blackboard.field_info.field_length
+        current_pos = self.blackboard.team.players[current_player]
+        best_player = None
+        best_score = 0
 
-        self.update_score_display()
+        for player, pos in self.blackboard.team.players.items():
+            if player != current_player:
+                # Calculate a score based on proximity to the ball and the enemy goal
+                distance_to_ball = ((pos[0] - ball_x)**2 + (pos[1] - ball_y)**2)**0.5
+                distance_to_goal = field_length - pos[0]
+                score = (field_length - distance_to_goal) * 2 - distance_to_ball
 
-        self.master.after(100, self.game_loop)
+                if score > best_score and pos[0] > current_pos[0]:  # Check if the player is closer to the enemy goal
+                    best_player = player
+                    best_score = score
+
+        return best_player
+
+    def pass_ball(self, from_player, to_player):
+        from_pos = self.blackboard.team.players[from_player]
+        to_pos = self.blackboard.team.players[to_player]
+
+        # Calculate direction and power for the pass
+        dx = to_pos[0] - from_pos[0]
+        dy = to_pos[1] - from_pos[1]
+        distance = (dx**2 + dy**2)**0.5
+
+        # Set kick parameters
+        self.blackboard.kick.set_kick_power(min(10, distance * 0.3))  # Adjust power based on distance
+        self.blackboard.kick.set_kick_direction(math.degrees(math.atan2(dy, dx)))
+
+        # Execute the kick
+        self.blackboard.kick.execute_kick()
+        print(f"{from_player} passed the ball to {to_player}")
 
 
 if __name__ == "__main__":

@@ -242,7 +242,7 @@ class TeamCapsule:
         defenders = self.players if team_id == 'a' else self.enemies
         attackers = self.enemies if team_id == 'a' else self.players
         goal_x = 0 if team_id == 'a' else field_length
-        max_speed = 1.1  # Maximum speed for all players
+        max_speed = 1.0  # Maximum speed for all players
 
         # Convert ball_position to float if it's stored as strings
         ball_x, ball_y = float(ball_position[0]), float(ball_position[1])
@@ -616,7 +616,7 @@ class TeamCapsule:
 
         # Determine the best spot to aim (away from the goalkeeper)
         if keeper_y < field_width / 2:
-            target_y = field_width * 0.7  # Aim high
+            target_y = field_width * 0.5  # Aim high
         else:
             target_y = field_width * 0.3  # Aim low
 
@@ -626,7 +626,7 @@ class TeamCapsule:
         shot_distance = math.sqrt(shot_dx**2 + shot_dy**2)
 
         # Set kick parameters
-        shot_power = max(25, distance_to_goal * 0.5+2)  # Adjust power based on distance
+        shot_power = min(20, distance_to_goal * 0.5+2)  # Adjust power based on distance
         shot_direction = math.degrees(math.atan2(shot_dy, shot_dx))
 
         # Calculate velocity components
@@ -634,8 +634,8 @@ class TeamCapsule:
         velocity_y = shot_power * math.sin(math.radians(shot_direction))
 
         # Set the ball's initial position and velocity
-        self.blackboard.gamestate.ball_position = (current_x, current_y)
-        self.blackboard.gamestate.ball_velocity = (min(velocity_x,20), min(velocity_y,20))
+        self.blackboard.gamestate.ball_position = (current_x+2, current_y+2)
+        self.blackboard.gamestate.ball_velocity = (min(velocity_x,25), min(velocity_y,25))
 
         # Execute the kick
         self.blackboard.kick.set_kick_power(shot_power)
