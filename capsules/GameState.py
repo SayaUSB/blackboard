@@ -22,12 +22,9 @@ class GameStatusCapsule:
         field_width = self.blackboard.field_info.field_width
         field_length = self.blackboard.field_info.field_length
         self.ball_position = (field_length / 2, field_width / 2)
-        for player in blackboard.team.players:
-            self.blackboard.team.players[player] = (random.randint(10, field_length // 2 - 10),random.randint(5, field_width - 5))
-        for enemy in blackboard.team.enemies:
-            self.blackboard.team.enemies[enemy] = (random.randint(field_length // 2 + 10, field_length - 10), random.randint(5, field_width - 5))
-
-    print("Ball and player positions have been reset.")
+        self.blackboard.team.players.clear()
+        self.blackboard.team.enemies.clear()
+        print("Ball and player positions have been reset.")
     def scored(self, team):
         if team in self.score:
             self.score[team] += 1
