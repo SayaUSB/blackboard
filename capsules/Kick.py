@@ -1,4 +1,5 @@
 import math
+import time
 import random
 import numpy as np
 
@@ -11,6 +12,8 @@ class KickCapsule:
         self.ball_velocity = (0, 0)
         self.friction = 0.98
         self.max_velocity = 10
+        self.enemy_possession_start = None
+        self.max_enemy_possession_time = 5
 
     def set_kick_power(self, power):
         self.kick_power = power
@@ -142,8 +145,8 @@ class KickCapsule:
         vx, vy = self.ball_velocity
         
         # Update position
-        x += vx * 0.1  # Reduced from 1 to 0.1 to slow down movement
-        y += vy * 0.1  # Reduced from 1 to 0.1 to slow down movement
+        x += vx * 0.1
+        y += vy * 0.1
         
         # Apply friction
         self.ball_velocity = (self.ball_velocity[0]*self.friction, self.ball_velocity[1]*self.friction)
@@ -154,6 +157,9 @@ class KickCapsule:
         
         # Update ball position in the blackboard
         self.blackboard.gamestate.ball_position = (x, y)
+
+        # Check for enemy possession
+        self._handle_enemy_possession(x, y)
 
     def kickable(self):
         x_ball = self.blackboard.gamestate.ball_position[0]
@@ -185,36 +191,48 @@ class KickCapsule:
             return
 
         if kicking_team == 'enemy':
-            self._handle_enemy_possession(nearest_player, x_ball, y_ball)
+            self._handle_enemy_possession(x_ball, y_ball)
         else:
             self._perform_kick(nearest_player, x_ball, y_ball)
 
-    def _find_nearest_player(self, x_ball, y_ball):
-        nearest_player, nearest_distance, kicking_team = None, float('inf'), None
-        
-        for team_id, team_dict in [('player', self.blackboard.team.players), ('enemy', self.blackboard.team.enemies)]:
-            for player, pos in team_dict.items():
-                distance = math.sqrt((x_ball - pos[0])**2 + (y_ball - pos[1])**2)
-                if distance < nearest_distance:
-                    nearest_player, nearest_distance, kicking_team = player, distance, team_id
-        
-        return nearest_player, nearest_distance, kicking_team
-
-    def _handle_enemy_possession(self, nearest_enemy, x_ball, y_ball):
+    def _force_turnover(self, nearest_enemy, x_ball, y_ball):
+        # Find the nearest friendly player
         closest_player = min(self.blackboard.team.players.items(), 
-                            key=lambda x: math.sqrt((x[1][0] - x_ball)**2 + (x[1][1] - y_ball)**2))
+                             key=lambda x: math.sqrt((x[1][0] - x_ball)**2 + (x[1][1] - y_ball)**2))
         player_name, player_pos = closest_player
         
-        dx, dy = x_ball - player_pos[0], y_ball - player_pos[1]
+        # Move the ball towards the friendly player
+        dx, dy = player_pos[0] - x_ball, player_pos[1] - y_ball
         distance = math.sqrt(dx**2 + dy**2)
         
         if distance > 0:
-            move_speed = min(1.0, distance)  # Cap speed at 1.0
-            new_x = player_pos[0] + (dx / distance) * move_speed
-            new_y = player_pos[1] + (dy / distance) * move_speed
-            
-            self.blackboard.team.players[player_name] = (new_x, new_y)
-            print(f"Player {player_name} is moving towards the ball to challenge {nearest_enemy}.")
+            self.ball_velocity = (dx / distance * 5, dy / distance * 5)  # Adjust the multiplier to control turnover speed
+        
+        self.enemy_possession_start = None
+        print(f"Ball turned over to {player_name}")
+
+    def _find_nearest_player(self, x_ball, y_ball):
+        nearest_player, nearest_distance, team = None, float('inf'), None
+        for team_id, team_dict in [('friendly', self.blackboard.team.players), ('enemy', self.blackboard.team.enemies)]:
+            for player, pos in team_dict.items():
+                distance = math.sqrt((x_ball - pos[0])**2 + (y_ball - pos[1])**2)
+                if distance < nearest_distance:
+                    nearest_player = player
+                    nearest_distance = distance
+                    team = team_id
+        return nearest_player, nearest_distance, team
+    
+    def _handle_enemy_possession(self, x_ball, y_ball):
+        nearest_player, nearest_distance, team = self._find_nearest_player(x_ball, y_ball)
+
+        if team == 'enemy':
+            if self.enemy_possession_start is None:
+                self.enemy_possession_start = time.time()
+            elif time.time() - self.enemy_possession_start > self.max_enemy_possession_time:
+                print(f"Enemy {nearest_player} has possessed the ball for too long. Forcing turnover.")
+                self._force_turnover(nearest_player, x_ball, y_ball)
+        else:
+            self.enemy_possession_start = None
 
     def _perform_kick(self, kicking_player, x_ball, y_ball):
         # Determine if this is a long-range shot

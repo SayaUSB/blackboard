@@ -107,43 +107,100 @@ class TeamCapsule:
         self._position_keeper('a', ball_position)
         self._position_keeper('b', ball_position)
 
+    def _calculate_spread_positions(self, ball_position, team_id):
+        field_length, field_width = self.blackboard.field_info.get_field_dimensions()
+        players = self.players if team_id == 'a' else self.enemies
+        num_players = len(players) - 1  # Exclude the keeper
+        spread_positions = []
+
+        # Define the radius of the circle around the ball
+        radius = 15  # Adjust this value as needed
+
+        # Calculate the center of the spread formation
+        if team_id == 'a':
+            center_x = min(ball_position[0] + 10, field_length - radius)
+        else:
+            center_x = max(ball_position[0] - 10, radius)
+        center_y = ball_position[1]
+
+        # Calculate positions in a circular formation around the center
+        for i in range(num_players):
+            angle = 2 * math.pi * i / num_players
+            x = center_x + radius * math.cos(angle)
+            y = center_y + radius * math.sin(angle)
+
+            # Ensure the positions are within the field boundaries
+            x = max(0, min(x, field_length))
+            y = max(0, min(y, field_width))
+
+            spread_positions.append((x, y))
+
+        return spread_positions
+
+    def _avoid_enemies_while_dribbling(self, player_x, player_y, goal_x, goal_y, enemies):
+        dribble_distance = 1.0
+        avoidance_radius = 5.0  # Radius to consider for enemy avoidance
+
+        # Calculate the direction towards the goal
+        dx = goal_x - player_x
+        dy = goal_y - player_y
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        if distance > 0:
+            dx /= distance
+            dy /= distance
+
+        # Check for nearby enemies
+        for enemy, enemy_pos in enemies.items():
+            enemy_distance = math.sqrt((enemy_pos[0] - player_x)**2 + (enemy_pos[1] - player_y)**2)
+            if enemy_distance < avoidance_radius:
+                # Calculate avoidance vector
+                avoid_x = player_x - enemy_pos[0]
+                avoid_y = player_y - enemy_pos[1]
+                avoid_distance = math.sqrt(avoid_x**2 + avoid_y**2)
+                if avoid_distance > 0:
+                    avoid_x /= avoid_distance
+                    avoid_y /= avoid_distance
+                    
+                    # Blend the goal direction with the avoidance direction
+                    dx = (dx + avoid_x) / 2
+                    dy = (dy + avoid_y) / 2
+
+        # Normalize the final direction
+        final_distance = math.sqrt(dx**2 + dy**2)
+        if final_distance > 0:
+            dx /= final_distance
+            dy /= final_distance
+
+        # Calculate the new ball position
+        new_ball_x = player_x + dx * dribble_distance
+        new_ball_y = player_y + dy * dribble_distance
+
+        return new_ball_x, new_ball_y
+
     def _offensive_play(self, team_id, ball_position):
         field_length, field_width = self.blackboard.field_info.get_field_dimensions()
         players = self.players if team_id == 'a' else self.enemies
+        enemies = self.enemies if team_id == 'a' else self.players
         goal_x = field_length if team_id == 'a' else 0
-        dribble_distance = 2  # Distance to keep the ball in front of the player
-        max_speed = 1.0  # Maximum speed for all players
+        max_speed = 1.0
+        dribble_distance = 1.0
 
-        closest_player = None
-        min_distance = float('inf')
-
-        # Find the closest player to the ball
-        for player, pos in players.items():
-            if player == (self.keeper_a if team_id == 'a' else self.keeper_b):
-                continue
-            distance_to_ball = math.sqrt((pos[0] - ball_position[0])**2 + (pos[1] - ball_position[1])**2)
-            if distance_to_ball < min_distance:
-                min_distance = distance_to_ball
-                closest_player = player
+        closest_player = min(players.items(), key=lambda x: math.sqrt((x[1][0] - ball_position[0])**2 + (x[1][1] - ball_position[1])**2))
 
         # Calculate spread positions
-        num_players = len(players) - 1  # Excluding the goalkeeper
-        spread_positions = []
-        for i in range(num_players):
-            x = (field_length / 2 + goal_x) / 2  # Midway between center and goal
-            y = field_width / (num_players + 1) * (i + 1)
-            spread_positions.append((x, y))
-
+        spread_positions = self._calculate_spread_positions(ball_position, team_id)
         spread_index = 0
+
         for player, pos in players.items():
             if player == (self.keeper_a if team_id == 'a' else self.keeper_b):
                 continue
 
             current_x, current_y = pos
 
-            if player == closest_player:
+            if player == closest_player[0]:
                 # The closest player should dribble the ball towards the goal
-                target_x, target_y = goal_x, field_width / 2
+                target_x, target_y = self._calculate_safe_dribble_path(current_x, current_y, goal_x, field_width / 2, enemies)
             else:
                 # Other players should spread out
                 target_x, target_y = spread_positions[spread_index]
@@ -170,19 +227,53 @@ class TeamCapsule:
                 players[player] = (new_x, new_y)
 
                 # Update ball position if this is the dribbling player
-                if player == closest_player:
-                    new_ball_x = new_x + dx * dribble_distance
-                    new_ball_y = new_y + dy * dribble_distance
-                    new_ball_x = max(0, min(new_ball_x, field_length))
-                    new_ball_y = max(0, min(new_ball_y, field_width))
+                if player == closest_player[0]:
+                    new_ball_x, new_ball_y = self._avoid_enemies_while_dribbling(new_x, new_y, goal_x, field_width / 2, enemies)
                     self.blackboard.gamestate.ball_position = (new_ball_x, new_ball_y)
 
                     # If close to the goal, attempt a shot
                     if (team_id == 'a' and new_x > field_length * 0.75) or (team_id == 'b' and new_x < field_length * 0.25):
                         self._attempt_shot(player, team_id)
-
         # Encourage passing
-        self._consider_passing(team_id, closest_player)
+        self._consider_passing(team_id, closest_player[0])
+
+    def _calculate_safe_dribble_path(self, start_x, start_y, goal_x, goal_y, enemies):
+        # Define the step size for path finding
+        step_size = 2.0
+
+        # Calculate the direct path to the goal
+        dx = goal_x - start_x
+        dy = goal_y - start_y
+        distance = math.sqrt(dx**2 + dy**2)
+
+        if distance == 0:
+            return start_x, start_y
+
+        # Normalize the direction
+        dx /= distance
+        dy /= distance
+
+        # Initialize the best path
+        best_x, best_y = start_x + dx * step_size, start_y + dy * step_size
+
+        # Check for nearby enemies and adjust the path
+        for _, enemy_pos in enemies.items():
+            enemy_distance = math.sqrt((enemy_pos[0] - best_x)**2 + (enemy_pos[1] - best_y)**2)
+            if enemy_distance < 5:  # If an enemy is too close
+                # Try to move perpendicular to the enemy
+                perp_dx, perp_dy = -dy, dx  # Perpendicular direction
+
+                # Check both perpendicular directions
+                for direction in [1, -1]:
+                    new_x = best_x + direction * perp_dx * step_size
+                    new_y = best_y + direction * perp_dy * step_size
+
+                    # Check if this new position is better (farther from enemies)
+                    if all(math.sqrt((e[0] - new_x)**2 + (e[1] - new_y)**2) > enemy_distance for e in enemies.values()):
+                        best_x, best_y = new_x, new_y
+                        break
+
+        return best_x, best_y
 
     def _consider_passing(self, team_id, ball_carrier):
         players = self.players if team_id == 'a' else self.enemies
@@ -242,7 +333,7 @@ class TeamCapsule:
         defenders = self.players if team_id == 'a' else self.enemies
         attackers = self.enemies if team_id == 'a' else self.players
         goal_x = 0 if team_id == 'a' else field_length
-        max_speed = 1.0  # Maximum speed for all players
+        max_speed = 1.0
 
         # Convert ball_position to float if it's stored as strings
         ball_x, ball_y = float(ball_position[0]), float(ball_position[1])
@@ -274,7 +365,7 @@ class TeamCapsule:
                 defenders[closest_defender_name] = (new_x, new_y)
 
                 # Attempt interception if close to the ball
-                if distance < 3:
+                if distance < 1:
                     self._attempt_interception(closest_defender_name, team_id)
 
         # Sort attackers by their distance to our goal

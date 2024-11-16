@@ -111,6 +111,24 @@ class SoccerGameUI:
         self.canvas.create_rectangle(30, 150, 50, 250, outline="white", fill="")
         self.canvas.create_rectangle(750, 150, 770, 250, outline="white", fill="")
 
+    def update_keeper_positions(self):
+        field_length, field_width = self.blackboard.field_info.get_field_dimensions()
+        ball_x, ball_y = self.blackboard.gamestate.ball_position
+        
+        # Update keeper A (left side)
+        keeper_a_pos = self.blackboard.team.players[self.blackboard.team.keeper_a]
+        target_y_a = min(max(ball_y, field_width * 0.2), field_width * 0.8)
+        new_x_a = min(max(keeper_a_pos[0], 2), field_length * 0.2)
+        new_y_a = keeper_a_pos[1] + (target_y_a - keeper_a_pos[1]) * 0.1
+        self.blackboard.team.players[self.blackboard.team.keeper_a] = (new_x_a, new_y_a)
+        
+        # Update keeper B (right side)
+        keeper_b_pos = self.blackboard.team.enemies[self.blackboard.team.keeper_b]
+        target_y_b = min(max(ball_y, field_width * 0.2), field_width * 0.8)
+        new_x_b = max(min(keeper_b_pos[0], field_length - 2), field_length * 0.8)
+        new_y_b = keeper_b_pos[1] + (target_y_b - keeper_b_pos[1]) * 0.1
+        self.blackboard.team.enemies[self.blackboard.team.keeper_b] = (new_x_b, new_y_b)
+
     def update_players(self):
         for player, pos in self.blackboard.team.players.items():
             x, y = pos
@@ -151,6 +169,7 @@ class SoccerGameUI:
     def game_loop(self):
         # Update player positions based on AI decisions
         self.blackboard.team.execute_strategy()
+        self.update_keeper_positions()
 
         # Update ball position based on the velocity
         self.blackboard.kick.update_ball_position()
