@@ -15,6 +15,7 @@ class SoccerGameUI:
         self.y_offset = 50
         
         self.create_reset_button()
+        self.create_pause_button()
         self.canvas = tk.Canvas(self.master, width=800, height=400, bg="green")
         self.canvas.pack()
 
@@ -68,7 +69,7 @@ class SoccerGameUI:
         
         # Reset ball position
         field_length, field_width = self.blackboard.field_info.get_field_dimensions()
-        self.blackboard.gamestate.ball_position = (field_length / 2, field_width / 2)
+        self.blackboard.gamestate.ball_position = (field_length / 2, random.randint(20, 30))
         
         # Update the UI
         self.update_players()
@@ -166,40 +167,54 @@ class SoccerGameUI:
         # Update ball position in the blackboard
         self.blackboard.gamestate.ball_position = ((x-50)/7, (y-50)/7)
 
+    def create_pause_button(self):
+        self.paused = False
+        self.pause_button = tk.Button(self.master, text="Pause", command=self.toggle_pause)
+        self.pause_button.pack(pady=5)
+
+    def toggle_pause(self):
+        self.paused = not self.paused
+        if self.paused:
+            self.pause_button.config(text="Resume")
+        else:
+            self.pause_button.config(text="Pause")
+            self.game_loop()  
+
     def game_loop(self):
-        # Update player positions based on AI decisions
-        self.blackboard.team.execute_strategy()
-        self.update_keeper_positions()
+        if not self.paused:
+            # Update player positions based on AI decisions
+            self.blackboard.team.execute_strategy()
+            self.update_keeper_positions()
 
-        # Update ball position based on the velocity
-        self.blackboard.kick.update_ball_position()
+            # Update ball position based on the velocity
+            self.blackboard.kick.update_ball_position()
 
-        # Check if the ball is in the goal
-        self.blackboard.gamestate.is_ball_in_goal(self.blackboard.gamestate.ball_position, self.blackboard)
-        self.update_players()
-        self.update_ball()
+            # Check if the ball is in the goal
+            self.blackboard.gamestate.is_ball_in_goal(self.blackboard.gamestate.ball_position, self.blackboard)
+            self.update_players()
+            self.update_ball()
 
-        # Update ball position in the canvas and update AI decisions based on the new position
-        ball_x, ball_y = self.blackboard.gamestate.ball_position
-        canvas_x, canvas_y = ball_x * self.scale_factor + self.x_offset, ball_y * self.scale_factor + self.y_offset
-        self.canvas.coords(self.ball, canvas_x-5, canvas_y-5, canvas_x+5, canvas_y+5)
+            # Update ball position in the canvas and update AI decisions based on the new position
+            ball_x, ball_y = self.blackboard.gamestate.ball_position
+            canvas_x, canvas_y = ball_x * self.scale_factor + self.x_offset, ball_y * self.scale_factor + self.y_offset
+            self.canvas.coords(self.ball, canvas_x-5, canvas_y-5, canvas_x+5, canvas_y+5)
 
-        # Find the closest player from both teams
-        closest_player, min_distance, kicking_team = self.find_closest_player(ball_x, ball_y)
+            # Find the closest player from both teams
+            closest_player, min_distance, kicking_team = self.find_closest_player(ball_x, ball_y)
 
-        if closest_player and kicking_team == 'a':  # If the closest player is from team A
-            better_positioned_player = self.find_better_positioned_teammate(closest_player, ball_x, ball_y)
-            if better_positioned_player:
-                self.pass_ball(closest_player, better_positioned_player)
+            if closest_player and kicking_team == 'a':  # If the closest player is from team A
+                better_positioned_player = self.find_better_positioned_teammate(closest_player, ball_x, ball_y)
+                if better_positioned_player:
+                    self.pass_ball(closest_player, better_positioned_player)
+                else:
+                    self.blackboard.kick.auto_kick()
             else:
                 self.blackboard.kick.auto_kick()
-        else:
-            self.blackboard.kick.auto_kick()
 
-        # Update score display
-        self.update_score_display()
+            # Update score display
+            self.update_score_display()
 
-        self.master.after(100, self.game_loop)
+            self.master.after(100, self.game_loop)
 
     def find_closest_player(self, ball_x, ball_y):
         closest_player, min_distance, kicking_team = None, float('inf'), None

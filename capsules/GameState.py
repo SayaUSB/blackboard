@@ -24,7 +24,7 @@ class GameStatusCapsule:
     def reset_ball_and_players(self, blackboard):
         field_width = self.blackboard.field_info.field_width
         field_length = self.blackboard.field_info.field_length
-        self.ball_position = (field_length / 2, field_width / 2)
+        self.ball_position = (field_length / 2, random.randint(field_width / 2-5, field_width / 2+5))
         print("Ball and player positions have been reset.")
 
     def scored(self, team):
@@ -51,7 +51,7 @@ class GameStatusCapsule:
                 self.blackboard.team.players[player] = (random.randint(10,40),random.randint(5,20))
         for enemy in blackboard.team.enemies:
                 self.blackboard.team.enemies[enemy] = (random.randint(60,90),random.randint(5,20))
-        self.ball_position = (50, 25)
+        self.ball_position = (50, random.randint(20, 30))
 
     def reset(self, blackboard):
         self.score = {'a': 0, 'b': 0}
@@ -89,7 +89,7 @@ class GameStatusCapsule:
     def reset_ball_and_players(self, blackboard):
         field_length = self.blackboard.field_info.field_length
         field_width = self.blackboard.field_info.field_width
-        self.ball_position = (field_length / 2, field_width / 2)
+        self.ball_position = (field_length / 2, random.randint(field_width / 2-5, field_width / 2+5))
         
         for player in blackboard.team.players:
             blackboard.team.players[player] = (random.randint(10, field_length // 2 - 10),
